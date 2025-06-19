@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=WDXL+Lubrifont+SC&display=swap');
+html,body{
+  margin:0;
+  padding:0;
+  background:gray;
+  color:white;
+  font-family:"WDXL Lubrifont SC";
+}
+.nav-link{
+  font-weight:600;
+  text-transform:uppercase;
+  margin-right:10px;
+  margin-left:10px;
+  padding:8px 20px;
+  border-radius:10px;
+  text-decoration:none;
+  letter-spacing:1px;
+}
+.MuiOutlinedInput-input-root.Mui-focused,
+.MuiOutlinedInput-notchedOutline{
+  border-color:white !important;
+}
