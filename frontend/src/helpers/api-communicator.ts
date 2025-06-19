@@ -1,12 +1,14 @@
 import axios from "axios";
 
+// Login user with email & password
 export const loginUser = async (email: string, password: string) => {
   try {
-    const response = await fetch("http://localhost:5000/api/v1/user/login", { // Correct route based on your backend
+    const response = await fetch("http://localhost:5000/api/v1/user/login", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: "include", // If you are using cookies
       body: JSON.stringify({ email, password }),
     });
 
@@ -21,22 +23,44 @@ export const loginUser = async (email: string, password: string) => {
   }
 };
 
+// Check if user is authenticated
 export const checkAuthStatus = async () => {
-  
-    const response = await axios.get("http://localhost:5000/api/v1/user/auth-status"); // Correct route based on your backend
-      if(response.status!==200){
+  try {
+    const response = await axios.get("http://localhost:5000/api/v1/user/auth-status", {
+      withCredentials: true,
+    });
+
+    if (response.status !== 200) {
       throw new Error("Unable to authenticate");
-      }
-      const data=await response.data;
-      return data;
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('Auth check error:', error);
+    throw new Error('Authentication failed');
+  }
 };
 
-export const sendChatRequest = async (message:string) => {
-  
-    const response = await axios.post("http://localhost:5000/api/chat/new",{message}); // Correct route based on your backend
-      if(response.status!==200){
-      throw new Error("Unable to send chat");
-      }
-      const data=await response.data;
-      return data;
+// Send a chat message to Gemini backend
+export const sendChatRequest = async (message: string) => {
+  try {
+    const response = await axios.post("http://localhost:5000/api/v1/chat/new", { message }, {
+      withCredentials: true,
+    });
+
+    return response.data; // { reply: '...' }
+  } catch (error: any) {
+    if (error.response) {
+      // Server responded with error
+      console.error("API error response:", error.response.data);
+      console.error("Status:", error.response.status);
+    } else if (error.request) {
+      // No response received
+      console.error("No response:", error.request);
+    } else {
+      // Other error
+      console.error("Error:", error.message);
+    }
+    throw new Error('Failed to get response from Gemini API');
+  }
 };

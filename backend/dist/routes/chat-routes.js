@@ -1,7 +1,9 @@
 import express from "express";
 import { sendChatToGemini } from "../controllers/chat-controllers.js";
 const chatRoutes = express.Router();
-// Match: /api/v1/chat/new
-chatRoutes.post("/new", sendChatToGemini);
+chatRoutes.post("/new", (req, res, next) => {
+    console.log("Route handler reached");
+    next();
+}, sendChatToGemini);
 export default chatRoutes;
 //# sourceMappingURL=chat-routes.js.map
