@@ -42,13 +42,21 @@ export const checkAuthStatus = async () => {
 };
 
 // Send a chat message to Gemini backend
-export const sendChatRequest = async (message: string) => {
+export const sendChatRequest = async (message: string,conversationId?:string) => {
   try {
-    const response = await axios.post("http://localhost:5000/api/v1/chat/new", { message }, {
-      withCredentials: true,
-    });
+   const response = await fetch('http://localhost:5000/api/v1/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ 
+    message,
+    conversationId,
+  })
+});
 
-    return response.data; // { reply: '...' }
+const data = await response.json();
+console.log(data.data.message);
+
+    return data; // { reply: '...' }
   } catch (error: any) {
     if (error.response) {
       // Server responded with error
@@ -62,5 +70,40 @@ export const sendChatRequest = async (message: string) => {
       console.error("Error:", error.message);
     }
     throw new Error('Failed to get response from Gemini API');
+  }
+};
+
+// helpers/api-communicator.ts
+export const getChatHistory = async () => {
+  try {
+    const res = await fetch("http://localhost:5000/api/v1/chat/history");
+    if (!res.ok) throw new Error("Failed to fetch chat history");
+    const data = await res.json();
+    return data.data; // assuming backend returns { success: true, data: [...] }
+  } catch (error) {
+    console.error("Chat history fetch error:", error);
+    return [];
+  }
+};
+
+export const getUserChats = async () => {
+  try {
+    const res = await fetch("http://localhost:5000/api/v1/chat/all-chats", {
+      method: 'GET', // Changed from POST to GET - more appropriate for fetching data
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Add credentials for authentication
+    });
+
+    if (!res.ok) {
+      throw new Error(`Unable to fetch chats: ${res.status}`);
+    }
+    
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error("Get user chats error:", error);
+    throw error;
   }
 };
