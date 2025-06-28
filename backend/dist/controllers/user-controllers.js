@@ -12,7 +12,8 @@ export const getAllUsers = async (req, res, next) => {
         return res.status(200).json({ message: "ERROR", cause: error.message });
     }
 };
-export const userSignup = async (req, res, next) => {
+export const userSignup = async (req, res) => {
+    console.log("Hi");
     try {
         const { name, email, password } = req.body;
         const user1 = await User.findOne({ email });

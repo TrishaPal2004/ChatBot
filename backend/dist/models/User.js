@@ -2,14 +2,25 @@ import mongoose from "mongoose";
 import { randomUUID } from "node:crypto";
 const chatschema = new mongoose.Schema({
     id: {
-        type: String, default: () => randomUUID(),
+        type: String,
+        default: () => randomUUID(),
     },
     role: {
-        type: String, required: true,
+        type: String,
+        required: true,
     },
     content: {
-        type: String, required: true,
-    }
+        type: String,
+        required: true,
+    },
+    conversationId: {
+        type: String,
+        required: true, // important
+    },
+    timestamp: {
+        type: Date,
+        default: Date.now,
+    },
 });
 const userSchema = new mongoose.Schema({
     name: { type: String, required: true },

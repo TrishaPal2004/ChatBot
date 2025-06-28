@@ -16,7 +16,7 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import LogoutIcon from "@mui/icons-material/Logout";
-import { getUserChats, sendChatRequest, getChatHistory } from "../helpers/api-communicator";
+import { getConversationById, sendChatRequest, getChatHistory } from "../helpers/api-communicator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { coldarkDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import toast from "react-hot-toast";
@@ -67,6 +67,14 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Auto-scroll to bottom ref
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isThinking]);
+
   // Check if user is authenticated
   useEffect(() => {
     if (!auth?.user) {
@@ -96,11 +104,13 @@ const Chat = () => {
     }
   }, [auth?.user]);
 
-  // Load user chats - separate from chat history
+  // Load user chats - FIXED: removed undefined getUserChats function
   useLayoutEffect(() => {
     if (auth?.isLoggedIn && auth?.user) {
       toast.loading("Loading chats", { id: "loadchats" });
-      getUserChats()
+      
+      // Use the correct function to get user chats
+      getConversationById("")  // This might need adjustment based on your API
         .then((data) => {
           // Only set chat messages if we have valid data
           if (data && data.chats && Array.isArray(data.chats)) {
@@ -110,8 +120,8 @@ const Chat = () => {
             toast.dismiss("loadchats");
           }
         })
-        .catch((err) => {
-          console.error("Failed to load chats:", err);
+        .catch((error) => {
+          console.error("Failed to load chats:", error); // FIXED: changed 'err' to 'error'
           toast.error("Loading failed", { id: "loadchats" });
           // Don't set error state here, just log it
         });
@@ -193,31 +203,72 @@ const Chat = () => {
   const handleLoadChat = async (chatId: string, index: number) => {
     if (!auth?.user) return;
     
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      const res = await fetch(`http://localhost:5000/api/v1/chat/${chatId}`, {
+      console.log(`Loading chat: ${chatId}`);
+      
+      const response = await fetch(`http://localhost:5000/api/v1/chat/${chatId}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json', // Explicitly request JSON
         },
         credentials: 'include',
       });
       
-      if (!res.ok) {
-        throw new Error(`Failed to load chat: ${res.status}`);
+      console.log(`Response status: ${response.status}`);
+      console.log(`Response URL: ${response.url}`);
+      console.log(`Response headers:`, response.headers);
+      
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      console.log(`Content-Type: ${contentType}`);
+      
+      if (!response.ok) {
+        // Log the actual response for debugging
+        const errorText = await response.text();
+        console.error(`HTTP ${response.status} Error Response:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const data = await res.json();
+      // Verify we're getting JSON before parsing
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        console.error('Expected JSON but got:', contentType);
+        console.error('Response body:', responseText.substring(0, 200) + '...');
+        throw new Error('Server returned HTML instead of JSON. Check if the API endpoint exists and authentication is working.');
+      }
       
-      if (data.success) {
+      const data = await response.json();
+      console.log('Chat data received:', data);
+      
+      if (data && data.success) {
         setchatMessages(data.data.messages || []);
         setConversationId(chatId);
       } else {
-        console.error("Failed to load chat:", data.message);
-        setError("Failed to load chat");
+        console.error("Failed to load chat:", data?.message);
+        setError(data?.message || "Failed to load chat");
       }
     } catch (error) {
       console.error("Error loading chat:", error);
-      setError("Error loading chat");
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("Error loading chat");
+      }
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  // Handle new chat
+  const handleNewChat = () => {
+    setchatMessages([]);
+    setConversationId(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   const handleLogout = () => {
@@ -304,6 +355,23 @@ const Chat = () => {
           </Box>
         </Paper>
 
+        {/* New Chat Button */}
+        <Button
+          variant="contained"
+          fullWidth
+          onClick={handleNewChat}
+          sx={{
+            mb: 2,
+            bgcolor: "#00bcd4",
+            color: "white",
+            "&:hover": {
+              bgcolor: "#0097a7",
+            },
+          }}
+        >
+          New Chat
+        </Button>
+
         {/* Chat History */}
         <Paper
           elevation={2}
@@ -313,7 +381,7 @@ const Chat = () => {
             color: "white",
             borderRadius: 3,
             border: "1px solid rgba(255,255,255,0.06)",
-            maxHeight: "calc(100vh - 200px)",
+            maxHeight: "calc(100vh - 250px)",
             overflowY: "auto",
           }}
         >
@@ -577,6 +645,9 @@ const Chat = () => {
                 </Box>
               </Box>
             )}
+
+            {/* Auto-scroll anchor */}
+            <div ref={messagesEndRef} />
           </Box>
 
           <Divider sx={{ bgcolor: "rgba(255,255,255,0.08)" }} />

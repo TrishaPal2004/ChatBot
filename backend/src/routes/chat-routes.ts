@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { chatCompleteValidator } from '../utils/validators.js';
 import { verifyToken } from '../utils/token-manager.js';
-import { generateChatCompletion, sendChatsToUser } from '../controllers/chat-controllers.js';
+import { generateChatCompletion, getConversationByIdController, sendChatsToUser } from '../controllers/chat-controllers.js';
+import User from '../models/User.js';
 const chatroutes = Router();
 
 // Initialize Gemini AI
@@ -73,20 +74,11 @@ const checkModelAvailability = (req, res, next) => {
   next();
 };
 
-// POST /api/v1/chat - Send message to chatbot
-chatroutes.post('/', checkModelAvailability, async (req, res) => {
+// Middleware to get Gemini AI response
+const getGeminiResponse = async (req, res, next) => {
   try {
     const { message, conversationId } = req.body;
-
-    // Validate input
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Bad Request', 
-        message: 'Message is required and must be a non-empty string' 
-      });
-    }
-
+    
     // Sanitize message
     const sanitizedMessage = message.trim();
     console.log('📨 Processing message:', sanitizedMessage);
@@ -118,28 +110,16 @@ chatroutes.post('/', checkModelAvailability, async (req, res) => {
     const response = await result.response;
     const botMessage = response.text();
 
-    // Clean up old sessions (keep only last 20)
-    if (chatSessions.size > 20) {
-      const oldestKeys = Array.from(chatSessions.keys()).slice(0, chatSessions.size - 20);
-      oldestKeys.forEach(key => chatSessions.delete(key));
-      console.log(`🧹 Cleaned up ${oldestKeys.length} old chat sessions`);
-    }
+    // Add AI response to request body for the controller
+    req.body.aiResponse = botMessage;
+    req.body.conversationId = sessionId;
+    req.body.model = currentModelName;
 
-    // Log successful response
-    console.log('✅ Generated response length:', botMessage);
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        message: botMessage,
-        conversationId: sessionId,
-        model: currentModelName,
-        timestamp: new Date().toISOString()
-      }
-    });
-
+    console.log('✅ Generated response length:', botMessage.length);
+    next(); // Continue to the controller
+    
   } catch (error) {
-    console.error('💥 Chat API Error:', error);
+    console.error('💥 Gemini API Error:', error);
     
     // Handle specific Gemini API errors
     if (error.message.includes('RATE_LIMIT_EXCEEDED')) {
@@ -147,7 +127,7 @@ chatroutes.post('/', checkModelAvailability, async (req, res) => {
         success: false,
         error: 'Rate Limit Exceeded', 
         message: 'Too many requests. Please wait a moment and try again.',
-        retryAfter: 60 // seconds
+        retryAfter: 60
       });
     }
     
@@ -198,7 +178,15 @@ chatroutes.post('/', checkModelAvailability, async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-});
+};
+
+// POST /api/v1/chat - Send message to chatbot
+chatroutes.post('/', 
+  verifyToken,
+  checkModelAvailability,
+  getGeminiResponse,
+  generateChatCompletion // This will handle DB storage and send the response
+);
 
 // GET /api/v1/chat/models - Get available models info
 chatroutes.get('/models', async (req, res) => {
@@ -244,27 +232,41 @@ chatroutes.get('/models', async (req, res) => {
   }
 });
 
-// GET /api/v1/chat/:conversationId
-chatroutes.get('/:conversationId', (req, res) => {
-  const { conversationId } = req.params;
-  const chat = chatSessions.get(conversationId);
 
-  if (!chat) {
-    return res.status(404).json({ success: false, message: 'Chat not found' });
+
+chatroutes.get('/history', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(res.locals.jwtData.id);
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    const chatGroups: Record<string, { conversationId: string; lastUpdated: Date }> = {};
+
+    for (const chat of user.chats) {
+      const convId = chat.conversationId || 'unknown';
+
+      if (!chatGroups[convId]) {
+        chatGroups[convId] = {
+          conversationId: convId,
+          lastUpdated: new Date(chat.timestamp),
+        };
+      }
+
+      if (new Date(chat.timestamp) > chatGroups[convId].lastUpdated) {
+        chatGroups[convId].lastUpdated = new Date(chat.timestamp);
+      }
+    }
+
+    const history = Object.values(chatGroups).sort(
+      (a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()
+    );
+
+    return res.status(200).json({ success: true, data: history });
+  } catch (error) {
+    console.error("💥 Error in /history route:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
-
-  // You need to store messages somewhere for this to work
-  res.json({ success: true, data: chat.history || [] });
-});
-
-// DIDNT WORK GET /api/v1/chat/history - List all conversations (just conversationId + timestamps)
-chatroutes.get('/history', (req, res) => {
-  const history = Array.from(chatSessions.entries()).map(([id, chat]) => ({
-    conversationId: id,
-    lastUpdated: new Date(), // or use your own tracking
-  }));
-
-  res.json({ success: true, data: history });
 });
 
 
@@ -303,9 +305,8 @@ chatroutes.get('/health', (req, res) => {
   });
 });
 
-chatroutes.get(
-  "/all-chats",
- // validate(chatCompleteValidator),
-  verifyToken,sendChatsToUser
-);
+// GET /api/v1/chat/all-chats - Get all user chats from database
+chatroutes.get("/all-chats", verifyToken, sendChatsToUser);
+// GET /api/v1/chat/:conversationId
+chatroutes.get('/:conversationId', verifyToken, getConversationByIdController);
 export default chatroutes;

@@ -21,7 +21,7 @@ app.use(cookieParser(process.env.COOKIE_SECRET))
 app.use(morgan("dev"));
 app.use("/api/v1",appRouter);
 
-app.use('/api/v1/chat', chatroutes);
+app.use('/api/chat', chatroutes);
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "OK", message: "Server is healthy" });
 });
